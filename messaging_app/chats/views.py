@@ -29,7 +29,19 @@ class MessageViewSet(viewsets.ModelViewSet):
     ordering_fields = ['sent_at']
 
     def get_queryset(self):
-        return Message.objects.filter(conversation__participants=self.request.user)
+        queryset = Message.objects.filter(conversation__participants=self.request.user)
+        # Handle nested route: filter by conversation_id if provided
+        conversation_id = self.kwargs.get('conversation_conversation_id')
+        if conversation_id:
+            queryset = queryset.filter(conversation__conversation_id=conversation_id)
+        return queryset
 
     def perform_create(self, serializer):
-        serializer.save(sender=self.request.user)
+        # Set the sender to the authenticated user
+        # For nested routes, use conversation_id from URL
+        conversation_id = self.kwargs.get('conversation_conversation_id')
+        if conversation_id:
+            conversation = Conversation.objects.get(conversation_id=conversation_id)
+            serializer.save(sender=self.request.user, conversation=conversation)
+        else:
+            serializer.save(sender=self.request.user)
