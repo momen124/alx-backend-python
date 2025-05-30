@@ -12,7 +12,6 @@ class ConversationViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'updated_at']
 
     def get_queryset(self):
-        # Only return conversations where the authenticated user is a participant
         return Conversation.objects.filter(participants=self.request.user)
 
     def create(self, request, *args, **kwargs):
@@ -30,9 +29,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     ordering_fields = ['sent_at']
 
     def get_queryset(self):
-        # Only return messages from conversations the user is part of
         return Message.objects.filter(conversation__participants=self.request.user)
 
     def perform_create(self, serializer):
-        # Set the sender to the authenticated user
         serializer.save(sender=self.request.user)

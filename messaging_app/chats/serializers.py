@@ -44,7 +44,6 @@ class ConversationSerializer(serializers.ModelSerializer):
     def validate_participant_ids(self, value):
         if len(value) < 1:
             raise serializers.ValidationError("A conversation must have at least one participant.")
-        # Verify that all participant IDs correspond to existing users
         for user_id in value:
             if not User.objects.filter(user_id=user_id).exists():
                 raise serializers.ValidationError(f"User with ID {user_id} does not exist.")
@@ -53,11 +52,9 @@ class ConversationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         participant_ids = validated_data.pop('participants', [])
         conversation = Conversation.objects.create(**validated_data)
-        # Add participants to the conversation
         for user_id in participant_ids:
             user = User.objects.get(user_id=user_id)
             conversation.participants.add(user)
-        # Add the requesting user (if authenticated)
         if self.context['request'].user.is_authenticated:
             conversation.participants.add(self.context['request'].user)
         return conversation
