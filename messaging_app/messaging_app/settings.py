@@ -1,3 +1,5 @@
+AUTH_USER_MODEL = 'chats.User'
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -5,16 +7,16 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',  # Django REST Framework
-    'chats',          # Chats app
+    'rest_framework',
+    'chats',
 ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',  # Session-based authentication
-        'rest_framework.authentication.BasicAuthentication',    # Optional: for testing
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',  # Require authentication for API access
+        'rest_framework.permissions.IsAuthenticated',
     ],
 }
