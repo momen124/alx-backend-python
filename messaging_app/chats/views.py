@@ -1,53 +1,40 @@
+from django.shortcuts import render
 from rest_framework import viewsets, status, filters
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .permissions import IsParticipantOfConversation
-from .models import Conversation, Message
-from .serializers import ConversationSerializer, MessageSerializer
-from .filters import MessageFilter
+from rest_framework.decorators import action
+from .models import Conversation, Message, User
+from .serializers import ConversationSerializer, MessageSerializer, UserSerializer
 
 class ConversationViewSet(viewsets.ModelViewSet):
+    queryset = Conversation.objects.all()
     serializer_class = ConversationSerializer
-    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter]
     search_fields = ['participants__username']
-    ordering_fields = ['created_at', 'updated_at']
-
-    def get_queryset(self):
-        return Conversation.objects.filter(participants=self.request.user)
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-class MessageViewSet(viewsets.ModelViewSet):
-    serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated, IsParticipantOfConversation]
-    filterset_class = MessageFilter
-    filter_backends = [
-        'django_filters.rest_framework.DjangoFilterBackend',
-        filters.SearchFilter,
-        filters.OrderingFilter
-    ]
-    search_fields = ['message_body']
-    ordering_fields = ['sent_at']
-
-    def get_queryset(self):
-        queryset = Message.objects.filter(conversation__participants=self.request.user)
-        # Handle nested route: filter by conversation_id if provided
-        conversation_id = self.kwargs.get('conversation_conversation_id')
-        if conversation_id:
-            queryset = queryset.filter(conversation__conversation_id=conversation_id)
-        return queryset.order_by('-sent_at')  # Latest messages first
 
     def perform_create(self, serializer):
-        # Set the sender to the authenticated user
-        conversation_id = self.kwargs.get('conversation_conversation_id')
-        if conversation_id:
-            conversation = Conversation.objects.get(conversation_id=conversation_id)
-            serializer.save(sender=self.request.user, conversation=conversation)
-        else:
-            serializer.save(sender=self.request.user)
+        # Automatically add the authenticated user to the conversation
+        conversation = serializer.save()
+        conversation.participants.add(self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def add_participant(self, request, pk=None):
+        conversation = self.get_object()
+        user_id = request.data.get('user_id')
+        try:
+            user = User.objects.get(id=user_id)
+            conversation.participants.add(user)
+            return Response({'status': 'user added'})
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all()
+    serializer_class = MessageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['timestamp']
+    ordering = ['-timestamp']
+
+    def perform_create(self, serializer):
+        serializer.save(sender=self.request.user)
+
