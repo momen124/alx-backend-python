@@ -1,23 +1,28 @@
 import logging
 from datetime import datetime
 from django.http import HttpResponseForbidden
-from django.core.cache import cache
-from django.conf import settings
-
-# Configure logging to write to requests.log
-logging.basicConfig(
-    filename=settings.BASE_DIR / 'requests.log',
-    level=logging.INFO,
-    format='%(message)s'
-)
+from django.utils import timezone
+from django.http import HttpResponseForbidden
 
 class RequestLoggingMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
 
+        # Configure file-based logger
+        logging.basicConfig(
+            filename='requests.log',
+            level=logging.INFO,
+            format='%(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+
     def __call__(self, request):
-        user = request.user if request.user.is_authenticated else 'Anonymous'
-        logging.info(f"{datetime.now()} - User: {user} - Path: {request.path}")
+        user = request.user if request.user.is_authenticated else "Anonymous"
+        path = request.path
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        self.logger.info(f"{timestamp} - User: {user} - Path: {path}")
+
         response = self.get_response(request)
         return response
 
@@ -27,37 +32,51 @@ class RestrictAccessByTimeMiddleware:
 
     def __call__(self, request):
         current_hour = datetime.now().hour
-        if not (9 <= current_hour < 18):  # Allow access between 9 AM and 6 PM
-            return HttpResponseForbidden("Chat access is restricted outside 9 AM to 6 PM.")
-        response = self.get_response(request)
-        return response
+        restricted_path = '/chats/'
+
+        # Block access if not between 18 (6PM) and 21 (9PM)
+        if request.path.startswith(restricted_path) and not (18 <= current_hour < 21):
+            return HttpResponseForbidden("Access to chats is only allowed between 6PM and 9PM.")
+
+        return self.get_response(request)
 
 class OffensiveLanguageMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
+        self.message_limits = {}
 
     def __call__(self, request):
-        if request.method == 'POST' and 'messages' in request.path:
-            client_ip = request.META.get('REMOTE_ADDR')
-            cache_key = f"message_count_{client_ip}"
-            message_count = cache.get(cache_key, 0)
-            
-            if message_count >= 5:
-                return HttpResponseForbidden("Message limit exceeded: 5 messages per minute.")
-            
-            # Increment count and set 1-minute expiry
-            cache.set(cache_key, message_count + 1, timeout=60)
-            
+        ip = request.META.get('REMOTE_ADDR')
+        if request.method == 'POST':
+            current_time = timezone.now()
+
+            if ip in self.message_limits:
+                last_request_time, count = self.message_limits[ip]
+                time_diff = current_time - last_request_time
+
+                if time_diff.total_seconds() > 60:
+                    self.message_limits[ip] = (current_time, 1)
+                else:
+                    if count >= 5:
+                        return HttpResponseForbidden("You have exceeded the message limit. Please try again later.")
+                    else:
+                        self.message_limits[ip] = (current_time, count + 1)
+            else:
+                self.message_limits[ip] = (current_time, 1)
+
         response = self.get_response(request)
         return response
 
-class RolePermissionMiddleware:
+class RolepermissionMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        if request.path.startswith('/api/conversations/') or request.path.startswith('/api/messages/'):
-            if not (request.user.is_authenticated and (request.user.is_staff or hasattr(request.user, 'is_moderator'))):
-                return HttpResponseForbidden("Only admins or moderators can access this action.")
+        if request.user.is_authenticated:
+            if not (request.user.is_superuser or request.user.groups.filter(name='moderator').exists()):
+                return HttpResponseForbidden("You do not have permission to access this resource.")
+        else:
+            return HttpResponseForbidden("You are not authenticated.")
+
         response = self.get_response(request)
         return response
