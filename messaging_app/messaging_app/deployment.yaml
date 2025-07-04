@@ -36,7 +36,8 @@ spec:
     spec:
       containers:
         - name: django-container
-          image: yourdockerhub/messaging-app:v1
+          image: messaging-app:v1
+          imagePullPolicy: IfNotPresent  
           ports:
             - containerPort: 8000
           env:
@@ -65,6 +66,8 @@ spec:
                 secretKeyRef:
                   name: django-secrets
                   key: MYSQL_ROOT_PASSWORD
+            - name: DJANGO_ALLOWED_HOSTS
+              value: "*"
           readinessProbe:
             httpGet:
               path: /
